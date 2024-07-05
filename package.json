@@ -1,0 +1,21 @@
+{
+  "name": "he4rt-squad-server",
+  "version": "1.0.0",
+  "description": "API simples para o He4rt-Squad usando Firebase e Express",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "nodemon src/index.js",
+    "deploy": "pm2 start src/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Novout",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "firebase-admin": "^12.2.0",
+    "nodemon": "^3.1.4",
+    "pm2": "^5.4.1"
+  }
+}
