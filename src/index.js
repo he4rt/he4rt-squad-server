@@ -42,7 +42,7 @@ app.post('/auth', async (req, res) => {
     const target = await store.collection('users').doc(response.uid).get()
 
     if (target.data().password !== user.password) {
-      res.status(400)
+      res.status(400).send('Wrong password')
 
       return
     }
@@ -62,11 +62,21 @@ app.put('/users/nickname', async (req, res) => {
   res.json(userResponse)
 })
 
+app.get('/users/teams/:id', async (req, res) => {
+  const response = await store.collection('teams').get()
+  const targets = response.docs.filter(doc => doc.data().ownerId === req.params.id).map(doc => doc.data())
+
+  res.json(targets)
+})
+
 app.post('/teams', async (req, res) => {
   const data = {
     name: req.body.name,
-    image: req.body.image,
+    image: req.body.image || 'https://i.imgur.com/vlU6ZAZ.jpg',
     ownerId: req.body.id,
+    description: req.body.description,
+    activateProject: req.body.activateProject || '',
+    level: 1,
     usersId: []
   }
 
@@ -81,9 +91,36 @@ app.delete('/teams', async (req, res) => {
   res.json(response)
 })
 
+app.get('/teams/owner/:name', async (req, res) => {
+  const response = await store.collection('teams').doc(req.params.name).get()
+  const data = response.data()
+  const arr = []
+
+  data.usersId.forEach(async (user) => {
+    const item = await store.collection('users').doc(user).get()
+    arr.push(item.data())  
+  })
+
+  const owner = await store.collection('users').doc(data.ownerId).get()
+  arr.unshift(owner.data())
+  
+  res.json(arr)
+})
+
 app.post('/teams/invite', async (req, res) => {
   try {
-    const target = await store.collection('users').doc(req.body.id).get()
+    const usersDoc = await store.collection('users').get()
+    const docs = usersDoc.docs.map(doc => doc.data())
+
+    const doc = docs.find(doc => doc.displayName === req.body.userName)
+
+    if(!doc) {
+      res.status(404).send('Target user not exists')
+      
+      return
+    }
+
+    const target = await store.collection('users').doc(doc.id).get()
   
     const user = target.data()
     user.invites.push(req.body.teamName)
@@ -92,7 +129,8 @@ app.post('/teams/invite', async (req, res) => {
   
     res.json(response)
   } catch(e) {
-    res.status(400)
+    console.log(e)
+    res.status(400).send('User not exists')
   }
 })
 
