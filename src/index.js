@@ -19,7 +19,7 @@ app.post('/auth', async (req, res) => {
   const user = {
     email: req.body.email,
     password: req.body.password,
-    displayName: 'GUEST',
+    displayName: `GUEST-${Math.random().toString(36).substring(2,7)}`,
     invites: []
   }
 
@@ -51,22 +51,64 @@ app.post('/auth', async (req, res) => {
   }
 })
 
-app.put('/users/nickname', async (req, res) => {
-  const response = await store.collection('users').doc(req.body.id).get()
+app.get('/users/:id', async (req, res) => {
+  const response = await store.collection('users').doc(req.params.id).get()
   const user = response.data()
 
-  user.displayName = req.body.nickname
+  if(!user || !response.data) {
+    res.status(404).send('User not found')
+
+    return
+  }
+
+  res.json(user)
+})
+
+app.put('/users/nickname', async (req, res) => {
+  const responseUser = await store.collection('users').doc(req.body.id).get()
+  const responseUsers =  await store.collection('users').get()
+
+  const user = responseUser.data()
+  const users = responseUsers.docs.map(doc => doc.data())
+
+  const nickname = req.body.nickname
+
+  if(users.find(user => user.displayName === nickname)) {
+    res.status(400).send('Exists nickname')
+
+    return
+  }
+
+  user.displayName = nickname
 
   const userResponse = await store.collection('users').doc(req.body.id).set(user)
 
-  res.json(userResponse)
+  res.json({
+    ...user,
+    ...userResponse
+  })
 })
 
 app.get('/users/teams/:id', async (req, res) => {
   const response = await store.collection('teams').get()
-  const targets = response.docs.filter(doc => doc.data().ownerId === req.params.id).map(doc => doc.data())
+  const member = (await store.collection('users').doc(req.params.id).get()).data()
 
-  res.json(targets)
+  const allTargets = []
+
+  const ownerTargets = response.docs.filter(doc => doc.data().ownerId === req.params.id).map(doc => doc.data())
+  response.docs.forEach(async (doc) => {
+    const res = doc.data()
+
+    const result = res.usersId.find(user => user === member.displayName && res.ownerId !== req.params.id)
+
+    if(result) {
+      allTargets.push(res)
+    }
+  })
+
+  allTargets.push(...ownerTargets)
+
+  res.json(allTargets)
 })
 
 app.post('/teams', async (req, res) => {
@@ -77,6 +119,7 @@ app.post('/teams', async (req, res) => {
     description: req.body.description,
     activateProject: req.body.activateProject || '',
     level: 1,
+    tasks: 0,
     usersId: []
   }
 
@@ -89,6 +132,17 @@ app.delete('/teams', async (req, res) => {
   const response = await store.collection('teams').doc(req.body.name).delete()
 
   res.json(response)
+})
+
+app.get('/teams', async (req, res) => {
+  const response = await store.collection('teams').get()
+  const teams = response.docs.map(doc => doc.data())
+
+  teams.sort((a, b) => a.tasks - b.tasks);
+
+  const highTeams = teams.slice(0, 10);
+
+  res.json(highTeams)
 })
 
 app.get('/teams/owner/:name', async (req, res) => {
@@ -121,15 +175,51 @@ app.post('/teams/invite', async (req, res) => {
     }
 
     const target = await store.collection('users').doc(doc.id).get()
-  
+
     const user = target.data()
     user.invites.push(req.body.teamName)
+  
+    const response = await store.collection('users').doc(doc.id).set(user)
+  
+    res.json(response)
+  } catch(e) {
+    res.status(400).send('User not exists')
+  }
+})
+
+app.post('/teams/invite/decline', async (req, res) => {
+  try {
+    const target = await store.collection('users').doc(req.body.id).get()
+    const user = target.data()
+
+    user.invites = user.invites.filter(invite => invite !== req.body.inviteName)
   
     const response = await store.collection('users').doc(req.body.id).set(user)
   
     res.json(response)
   } catch(e) {
-    console.log(e)
+    res.status(400).send('User not exists')
+  }
+})
+
+app.post('/teams/invite/accept', async (req, res) => {
+  try {
+    const target = await store.collection('users').doc(req.body.id).get()
+    const user = target.data()
+
+    user.invites = user.invites.filter(invite => invite !== req.body.inviteName)
+  
+    await store.collection('users').doc(req.body.id).set(user)
+
+    const team = await store.collection('teams').doc(req.body.inviteName).get()
+    const teamData = team.data()
+
+    teamData.usersId.push(req.body.id)
+  
+    const teamResponse = await store.collection('teams').doc(req.body.inviteName).set(teamData)
+
+    res.json(teamResponse)
+  } catch(e) {
     res.status(400).send('User not exists')
   }
 })
