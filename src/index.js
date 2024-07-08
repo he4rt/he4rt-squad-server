@@ -91,22 +91,18 @@ app.put('/users/nickname', async (req, res) => {
 
 app.get('/users/teams/:id', async (req, res) => {
   const response = await store.collection('teams').get()
-  const member = (await store.collection('users').doc(req.params.id).get()).data()
 
   const allTargets = []
 
   const ownerTargets = response.docs.filter(doc => doc.data().ownerId === req.params.id).map(doc => doc.data())
-  response.docs.forEach(async (doc) => {
-    const res = doc.data()
-
-    const result = res.usersId.find(user => user === member.displayName && res.ownerId !== req.params.id)
-
-    if(result) {
-      allTargets.push(res)
+  const memberTargets = response.docs.filter(doc => {
+    if (doc.data().usersId.find(user => user === req.params.id) && doc.data().ownerId !== req.params.id) {
+      return doc.data()
     }
   })
 
   allTargets.push(...ownerTargets)
+  allTargets.push(...memberTargets.map(doc => doc.data()))
 
   res.json(allTargets)
 })
@@ -123,13 +119,22 @@ app.post('/teams', async (req, res) => {
     usersId: []
   }
 
-  const response = await store.collection('teams').doc(data.name).set(data)
+  const target = await store.collection('teams').doc(data.name)
+  const nameTarget = (await target.get()).data()
+
+  if(nameTarget) {
+    res.status(400).send('Team name exists.')
+
+    return
+  }
+
+  const response = await target.set(data)
 
   res.json(response)
 })
 
-app.delete('/teams', async (req, res) => {
-  const response = await store.collection('teams').doc(req.body.name).delete()
+app.delete('/teams/:name', async (req, res) => {
+  const response = await store.collection('teams').doc(req.params.name).delete()
 
   res.json(response)
 })
@@ -145,10 +150,28 @@ app.get('/teams', async (req, res) => {
   res.json(highTeams)
 })
 
+app.get('/landing', async (req, res) => {
+  const teams = await store.collection('teams').get()
+
+  const users = await store.collection('users').get()
+
+  const projects = await store.collection('projects').get()
+
+  res.json({
+    teams: teams.docs.length,
+    users: users.docs.length,
+    projects: projects.docs.length
+  })
+})
+
 app.get('/teams/owner/:name', async (req, res) => {
   const response = await store.collection('teams').doc(req.params.name).get()
   const data = response.data()
   const arr = []
+
+  if(!data) {
+    res.status(400).send('Data not exists.')
+  }
 
   data.usersId.forEach(async (user) => {
     const item = await store.collection('users').doc(user).get()
@@ -214,6 +237,12 @@ app.post('/teams/invite/accept', async (req, res) => {
     const team = await store.collection('teams').doc(req.body.inviteName).get()
     const teamData = team.data()
 
+    if (teamData.usersId.find(user => user === req.body.id)) {
+      res.status(400).send('User exists')
+
+      return
+    } 
+
     teamData.usersId.push(req.body.id)
   
     const teamResponse = await store.collection('teams').doc(req.body.inviteName).set(teamData)
@@ -252,43 +281,75 @@ app.post('/projects', async (req, res) => {
     name: req.body.name,
     teamName: req.body.teamName,
     ownerId: req.body.id,
+    username: req.body.username,
+    description: req.body.description,
+    status: req.body.status,
     image: req.body.image || '',
     stars: [],
     repoUrl: req.body.repoUrl,
   }
 
-  const asTeam = await store.collection('projects').doc(data.name)
-  if (asTeam.get()) {
+  const id = `${data.teamName}:${data.name}`
+
+  const asTeam = await store.collection('projects').doc(id).get()
+  if (asTeam.data()) {
     res.status(400)
 
     return
   }
 
-  const response = await store.collection('projects').doc(data.name).set(data)
+  const response = await store.collection('projects').doc(id).set(data)
 
   res.json(response)
+})
+
+app.get('/projects/:id', async (req, res) => {
+  const response = await store.collection('projects').get()
+  const projects = response.docs.map(doc => doc.data()) || []
+
+  const filteredProjects = projects.filter(project => req.params.id.startsWith(project.teamName))
+
+  res.json(filteredProjects)
 })
 
 app.delete('/projects', async (req, res) => {
-  const response = await store.collection('projects').doc(req.body.name).delete()
+  const response = await store.collection('projects').doc(req.body.id).delete()
 
   res.json(response)
 })
 
-app.put('/projects/star', async (req, res) => {
+app.put('/projects', async (req, res) => {
+  const response = await store.collection('projects').doc(req.body.id).get()
+  const project = response.data()
+
+  project.status = 'done'
+
+  const result = await store.collection('projects').doc(req.body.id).set(project)
+
+  res.json(result)
+})
+
+app.get('/items', async (req, res) => {
+  const response = await store.collection('projects').get()
+  const data = response.docs.map(doc => doc.data())
+  
+  res.json(data)
+})
+
+app.post('/projects/star', async (req, res) => {
   try {
-    const response = await store.collection('projects').doc(req.body.name).get()
+    const response = await store.collection('projects').doc(req.body.id).get()
     const project = response.data()
 
     if(project.stars.find((user) => user === req.body.userId)) {
-      res.status(400)
+      res.status(400).send('User already star.')
 
       return
     }
 
     project.stars.push(req.body.userId)
   
-    const result = await store.collection('projects').doc(req.body.name).set(project)
+    const result = await store.collection('projects').doc(req.body.id).set(project)
 
     res.json(result)
   } catch(e) {
