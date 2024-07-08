@@ -19,7 +19,8 @@ app.post('/auth', async (req, res) => {
   const user = {
     email: req.body.email,
     password: req.body.password,
-    displayName: `GUEST-${Math.random().toString(36).substring(2,7)}`,
+    imageUrl: req.body.image || 'https://i.imgur.com/vlU6ZAZ.jpg',
+    displayName: req.body.nickname || `GUEST-${Math.random().toString(36).substring(2,7)}`,
     invites: []
   }
 
@@ -30,10 +31,18 @@ app.post('/auth', async (req, res) => {
       disabled: false
     })
 
-    store.collection('users').doc(userResponse.uid).set({
-      id: userResponse.uid,
-      ...user
-    })
+    if(!userResponse) {
+      res.status(400).send('User already exists.')
+
+      return
+    }
+
+    if(!req.body.isLogin) {
+      await store.collection('users').doc(userResponse.uid).set({
+        id: userResponse.uid,
+        ...user
+      })
+    }
 
     res.json(userResponse)
   } catch(e) {
@@ -49,6 +58,20 @@ app.post('/auth', async (req, res) => {
 
     res.json(response)
   }
+})
+
+app.get('/landing', async (req, res) => {
+  const teams = await store.collection('teams').get()
+
+  const users = await store.collection('users').get()
+
+  const projects = await store.collection('projects').get()
+
+  res.json({
+    teams: teams.docs.length,
+    users: users.docs.length,
+    projects: projects.docs.length
+  })
 })
 
 app.get('/users/:id', async (req, res) => {
@@ -113,8 +136,6 @@ app.post('/teams', async (req, res) => {
     image: req.body.image || 'https://i.imgur.com/vlU6ZAZ.jpg',
     ownerId: req.body.id,
     description: req.body.description,
-    activateProject: req.body.activateProject || '',
-    level: 1,
     tasks: 0,
     usersId: []
   }
@@ -148,20 +169,6 @@ app.get('/teams', async (req, res) => {
   const highTeams = teams.slice(0, 10);
 
   res.json(highTeams)
-})
-
-app.get('/landing', async (req, res) => {
-  const teams = await store.collection('teams').get()
-
-  const users = await store.collection('users').get()
-
-  const projects = await store.collection('projects').get()
-
-  res.json({
-    teams: teams.docs.length,
-    users: users.docs.length,
-    projects: projects.docs.length
-  })
 })
 
 app.get('/teams/owner/:name', async (req, res) => {
