@@ -330,9 +330,14 @@ app.put('/projects', async (req, res) => {
   const project = response.data()
 
   project.status = 'done'
-
   const result = await store.collection('projects').doc(req.body.id).set(project)
 
+  const team = await store.collection('projects').doc(req.body.teamName).get()
+  const teamData = team.data()
+
+  teamData.tasks += 1
+
+  await store.collection('projects').doc(req.body.teamName).set(teamData)
   res.json(result)
 })
 
