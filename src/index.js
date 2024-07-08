@@ -279,7 +279,7 @@ app.post('/teams/accept', async (req, res) => {
     res.json(response)
   }
   catch(e) {
-    res.status(400)
+    res.status(400).send('Team not exists.')
   }
 })
 
@@ -300,7 +300,7 @@ app.post('/projects', async (req, res) => {
 
   const asTeam = await store.collection('projects').doc(id).get()
   if (asTeam.data()) {
-    res.status(400)
+    res.status(400).send('Team already exist.')
 
     return
   }
@@ -365,7 +365,7 @@ app.post('/projects/star', async (req, res) => {
 
     res.json(result)
   } catch(e) {
-    res.status(400)
+    res.status(400).send('Project not exists.')
   }
 })
 
